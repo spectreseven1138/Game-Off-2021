@@ -8,9 +8,50 @@
 
 config_version=4
 
+_global_script_classes=[ {
+"base": "Reference",
+"class": "ExArray",
+"language": "GDScript",
+"path": "res://addons/Godot-Utilities/Classes/ExArray.gd"
+}, {
+"base": "ImageTexture",
+"class": "ExTexture",
+"language": "GDScript",
+"path": "res://addons/Godot-Utilities/Classes/ExTexture.gd"
+}, {
+"base": "NinePatchRect",
+"class": "NinePatchRectTextureButton",
+"language": "GDScript",
+"path": "res://addons/Godot-Utilities/Nodes/NinePatchRectTextureButton.gd"
+}, {
+"base": "Reference",
+"class": "SimpleScipt",
+"language": "GDScript",
+"path": "res://scripts/classes/SimpleScipt.gd"
+}, {
+"base": "Reference",
+"class": "SimpleScriptError",
+"language": "GDScript",
+"path": "res://scripts/classes/SimpleScriptError.gd"
+}, {
+"base": "Reference",
+"class": "SimpleScriptFunction",
+"language": "GDScript",
+"path": "res://scripts/classes/SimpleSciptFunction.gd"
+} ]
+_global_script_class_icons={
+"ExArray": "",
+"ExTexture": "",
+"NinePatchRectTextureButton": "",
+"SimpleScipt": "",
+"SimpleScriptError": "",
+"SimpleScriptFunction": ""
+}
+
 [application]
 
 config/name="Game Off 2021"
+run/main_scene="res://Main.tscn"
 config/icon="res://icon.png"
 
 [physics]
