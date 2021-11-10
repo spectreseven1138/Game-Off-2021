@@ -1,6 +1,8 @@
-[gd_scene load_steps=2 format=2]
+[gd_scene load_steps=3 format=2]
 
 [ext_resource path="res://Main.gd" type="Script" id=1]
+
+[sub_resource type="Theme" id=1]
 
 [node name="Node2D" type="Control"]
 anchor_right = 1.0
@@ -19,21 +21,26 @@ __meta__ = {
 
 [node name="HSplitContainer" type="VSplitContainer" parent="VBoxContainer"]
 margin_right = 1024.0
-margin_bottom = 576.0
+margin_bottom = 572.0
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
 [node name="TextEdit" type="TextEdit" parent="VBoxContainer/HSplitContainer"]
 margin_right = 1024.0
-margin_bottom = 450.0
+margin_bottom = 446.0
 size_flags_vertical = 3
+theme = SubResource( 1 )
 text = "
 foo = \"FOO\"
 bar = \"BAR\"
 
 print(\"Hello world\")
 
-print(foo, bar)"
+print(foo, bar)
+
+
+func bruh():
+	pass"
 highlight_current_line = true
 syntax_highlighting = true
 show_line_numbers = true
@@ -41,14 +48,16 @@ draw_tabs = true
 breakpoint_gutter = true
 fold_gutter = true
 highlight_all_occurrences = true
+minimap_draw = true
+caret_blink = true
 __meta__ = {
 "_edit_use_anchors_": false
 }
 
 [node name="PanelContainer" type="PanelContainer" parent="VBoxContainer/HSplitContainer"]
-margin_top = 462.0
+margin_top = 458.0
 margin_right = 1024.0
-margin_bottom = 576.0
+margin_bottom = 572.0
 
 [node name="RichTextLabel" type="RichTextLabel" parent="VBoxContainer/HSplitContainer/PanelContainer"]
 margin_left = 7.0
@@ -59,21 +68,28 @@ rect_min_size = Vector2( 0, 100 )
 bbcode_enabled = true
 
 [node name="HBoxContainer" type="HBoxContainer" parent="VBoxContainer"]
-margin_top = 580.0
+margin_top = 576.0
 margin_right = 1024.0
 margin_bottom = 600.0
 
 [node name="RunButton" type="Button" parent="VBoxContainer/HBoxContainer"]
-margin_right = 922.0
-margin_bottom = 20.0
+margin_right = 759.0
+margin_bottom = 24.0
 size_flags_horizontal = 3
 text = "Run code"
 
 [node name="ClearButton" type="Button" parent="VBoxContainer/HBoxContainer"]
-margin_left = 926.0
-margin_right = 1024.0
-margin_bottom = 20.0
+margin_left = 763.0
+margin_right = 861.0
+margin_bottom = 24.0
 text = "Clear console"
+
+[node name="ClearOnRunCheckBox" type="CheckBox" parent="VBoxContainer/HBoxContainer"]
+margin_left = 865.0
+margin_right = 1024.0
+margin_bottom = 24.0
+pressed = true
+text = "Clear console on run"
 
 [connection signal="pressed" from="VBoxContainer/HBoxContainer/RunButton" to="." method="_on_Button_pressed"]
 [connection signal="pressed" from="VBoxContainer/HBoxContainer/ClearButton" to="." method="_on_ClearButton_pressed"]
