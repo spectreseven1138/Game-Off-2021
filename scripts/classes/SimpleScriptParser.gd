@@ -1,7 +1,7 @@
 extends Reference
 class_name SimpleScriptParser
 
-var simplescript: SimpleScript
+var simplescript
 
-func _init(script: SimpleScript):
+func _init(script):
 	simplescript = script

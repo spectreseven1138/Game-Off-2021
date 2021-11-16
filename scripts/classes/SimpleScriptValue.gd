@@ -4,10 +4,10 @@ class_name SimpleScriptValue
 enum TYPES {NONE, PROPERTY, FUNCTION, VALUE}
 var type: int = TYPES.NONE
 
-var simplescript: SimpleScript
+var simplescript
 var data: Dictionary
 
-func _init(script: SimpleScript):
+func _init(script):
 	simplescript = script
 
 func init_property(property_name: String) -> SimpleScriptValue:
@@ -44,4 +44,5 @@ func get_value():
 		TYPES.VALUE:
 			return data["value"]
 		TYPES.FUNCTION:
-			return simplescript.call_function
+			# TODO
+			return

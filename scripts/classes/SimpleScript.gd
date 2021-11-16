@@ -6,23 +6,27 @@ const string_char: String = '"'
 const kw_function: String = "func"
 const kw_return: String = "return"
 const kw_pass: String = "pass"
-const comment_string: String = "#"
+const comment_string: String = "//"
 
 var source_code: String
 var stdout: FuncRef
 var stderr: FuncRef
 
 var functions: Dictionary = {}
-var properties: Dictionary = {
+var global_properties: Dictionary = {
 	"null": {"value": null, "constant": true}, 
 	"INF": {"value": INF, "constant": true},
 	"NAN": {"value": NAN, "constant": true},
 	"PI": {"value": PI, "constant": true},
 	"TAU": {"value": TAU, "constant": true},
-	"int": {"value": SimpleScriptValue.new(self).init_value(Type.new(TYPE_INT)), "constant": true},
-	"str": {"value": SimpleScriptValue.new(self).init_value(Type.new(TYPE_STRING)), "constant": true},
-	"array": {"value": SimpleScriptValue.new(self).init_value(Type.new(TYPE_ARRAY)), "constant": true},
-	"dict": {"value": SimpleScriptValue.new(self).init_value(Type.new(TYPE_DICTIONARY)), "constant": true}
+	"int": {"value": Type.new(TYPE_INT), "constant": true},
+	"str": {"value": Type.new(TYPE_STRING), "constant": true},
+	"array": {"value": Type.new(TYPE_ARRAY), "constant": true},
+	"dict": {"value": Type.new(TYPE_DICTIONARY), "constant": true}
+#	"int": {"value": SimpleScriptValue.new(self).init_value(Type.new(TYPE_INT)), "constant": true},
+#	"str": {"value": SimpleScriptValue.new(self).init_value(Type.new(TYPE_STRING)), "constant": true},
+#	"array": {"value": SimpleScriptValue.new(self).init_value(Type.new(TYPE_ARRAY)), "constant": true},
+#	"dict": {"value": SimpleScriptValue.new(self).init_value(Type.new(TYPE_DICTIONARY)), "constant": true}
 	}
 
 var parser: SimpleScriptParser = SimpleScriptParser.new(self)
@@ -33,12 +37,13 @@ func _init(_source_code: String, _stdout: FuncRef, _stderr: FuncRef):
 	stderr = _stderr
 	
 	functions = {
-		"print": SimpleScriptFunction.new(stdout, stderr).init_builtin("print")
+		"print": SimpleScriptFunction.new(stdout, stderr, self).init_builtin("print"),
+		"sprint": SimpleScriptFunction.new(stdout, stderr, self).init_builtin("sprint"),
 	}
 
 func get_property(property_name: String):
-	if property_name in properties:
-		return properties[property_name]["value"]
+	if property_name in global_properties:
+		return global_properties[property_name]["value"]
 	else:
 		return null
 
@@ -49,13 +54,15 @@ var line: int = 0
 var i_in_line: int = 0
 var indent: int = 0
 var c: String
+
 func run():
 	i = -1
 	if not (yield(advance(), "completed") if paused else advance()):
 		return
 	while true:
-		
-		var result = get_value(false)
+		var properties: Dictionary = {}
+		var result = get_value(false, properties)
+		Utils.append_dictionary(global_properties, properties)
 		if result is SimpleScriptError and not result.is_ok():
 			stderr.call_func(result)
 			return
@@ -63,23 +70,30 @@ func run():
 		if not (yield(advance(), "completed") if paused else advance()):
 			break
 
-func get_value(must_be_value: bool, kw_endings: Array = []):
+func execute_function(line: int, arguments: Dictionary):
+	var properties: Dictionary = arguments
+	go_to_line(line)
+	print("C: ", c == "\n")
+	var code: String = get_code_block()
+	print("CODE: ", code)
+
+
+func get_value(must_be_value: bool, properties: Dictionary, kw_endings: Array = []):
 	var kw: String = ""
 	var skip_advance: bool = false
 	while true:
 		
 		if c in kw_endings:
 			if kw in properties:
-				return properties[kw]
+				return properties[kw]["value"]
+			elif kw in global_properties:
+				return global_properties[kw]["value"]
 			else:
 				return SimpleScriptError.new("Property '" + kw + "' does not exist", line, i_in_line)
 		
 		match c:
 			"(": # Call function
-				var err: SimpleScriptError = call_function(kw)
-				if not err.is_ok():
-					return err
-				kw = ""
+				return call_function(kw)
 			"=": # Assign
 				
 				if must_be_value:
@@ -94,21 +108,27 @@ func get_value(must_be_value: bool, kw_endings: Array = []):
 				if c == " ":
 					return SimpleScriptError.new("Unexpected space", line, i_in_line)
 				
-				var value_to_assign = get_value(true)
+				# Can't assign is property already exists and is a constant
+				if (kw in properties and properties[kw]["constant"]) or (kw in global_properties and global_properties[kw]["constant"]):
+					return get_error("Cannot assign value to constant property '" + kw + "'")
+				
+				var value_to_assign = get_value(true, properties)
+				if value_to_assign is GDScriptFunctionState:
+					value_to_assign = yield(value_to_assign, "completed")
 				if value_to_assign is SimpleScriptError:
 					return value_to_assign
 				
-				properties[kw] = value_to_assign
+				properties[kw] = {"value": value_to_assign, "constant": false}
 				print("Assigned property '" + kw + "' as ", value_to_assign)
 				kw = ""
 				
 			string_char:
-				var value = create_string()
-				if not value[0].is_ok():
-					return value[0]
+				var result = create_string()
+				if result is SimpleScriptError:
+					return result
 				if not (yield(advance(), "completed") if paused else advance()):
 					return
-				return value[1]
+				return result
 			" ":
 				
 				match kw:
@@ -149,14 +169,40 @@ func get_value(must_be_value: bool, kw_endings: Array = []):
 				return
 	
 	if kw in properties:
-		return properties[kw]
+		return properties[kw]["value"]
 	else:
 		return SimpleScriptError.new("Property '" + kw + "' does not exist", line, i_in_line)
+
+func go_to_line(target_line: int):
+	i = 0
+	line = 1
+	i_in_line = 0
+	indent = 0
+	while true:
+		c = source_code[i]
+		if c == "\n":
+			line += 1
+		i += 1
+		
+		if i >= len(source_code):
+			push_error("Script ended unexpectedly")
+			return
+		
+		if line == target_line:
+			c = source_code[i]
+			
+			while c == "	":
+				print("ADD INDENT")
+				indent += 1
+				i += 1
+				i_in_line += 1
+				c = source_code[i]
+			
+			break
 
 # Advances the current character (c) by 1. Handles indentation, linebreaks, and comments.
 # Returns false if the script ended
 func advance(ignore_linebreaks: bool = false) -> bool:
-	
 	if paused:
 		yield(self, "resume")
 	
@@ -209,7 +255,7 @@ func advance(ignore_linebreaks: bool = false) -> bool:
 	else:
 		return false
 
-func call_function(func_name: String) -> SimpleScriptError:
+func call_function(func_name: String):
 	
 	if not func_name in functions:
 		return SimpleScriptError.new("The function '" + func_name + "' does not exist", line, i_in_line)
@@ -224,7 +270,7 @@ func call_function(func_name: String) -> SimpleScriptError:
 			")":
 				break
 			_:
-				var value = get_value(true, [",", ")"])
+				var value = get_value(true, {}, [",", ")"])
 				if value is SimpleScriptError:
 					return value
 				args.append(value)
@@ -240,10 +286,13 @@ func call_function(func_name: String) -> SimpleScriptError:
 			else:
 				break
 	
-	print(func_name, " | ", args)
 	var function: SimpleScriptFunction = functions[func_name]
-	function.call_func(args, i)
-	return SimpleScriptError.new(null, line, i_in_line)
+	
+	var error: SimpleScriptError = function.validate_arguments(args)
+	if not error.is_ok():
+		return error
+	
+	return function.call_func(args)
 
 func declare_function() -> SimpleScriptError:
 	
@@ -257,21 +306,24 @@ func declare_function() -> SimpleScriptError:
 			break
 		elif c == " ":
 			if not (yield(advance(), "completed") if paused else advance()):
-				return SimpleScriptError.new(script_end_error, line, i_in_line)
+				return get_error(script_end_error)
 			if c == " ":
-				return SimpleScriptError.new("Unexpected space while declaring function", line, i_in_line)
+				return get_error("Unexpected space while declaring function")
 			if c != "(":
-				return SimpleScriptError.new("Expected '('", line, i_in_line)
+				return get_error("Expected '('")
 			break
 		else:
 			func_name += c
 		
 		if not (yield(advance(), "completed") if paused else advance()):
-			return SimpleScriptError.new(script_end_error, line, i_in_line)
+			return get_error(script_end_error)
+	
+	if func_name in functions:
+		return get_error("A function with name '" + func_name + "' already exists")
 	
 	# C is (, so advance
 	if not (yield(advance(), "completed") if paused else advance()):
-		return SimpleScriptError.new(script_end_error, line, i_in_line)
+		return get_error(script_end_error)
 	
 	print("Declare function: ", func_name)
 	
@@ -287,7 +339,7 @@ func declare_function() -> SimpleScriptError:
 		if c == ")":
 			break
 		
-		var arg: Dictionary = {"name": "", "type": null}
+		var arg: Dictionary = {"name": "", "type": null, "optional": false}
 		var skip_advance: bool = false
 		while true:
 			
@@ -300,12 +352,12 @@ func declare_function() -> SimpleScriptError:
 					if not (yield(advance(), "completed") if paused else advance()):
 						return get_error(script_end_error)
 					
-					var result = get_value(true, [",", ")"])
+					var result = get_value(true, {}, [",", ")"])
 					if result is SimpleScriptError:
 						return result
 					
-					elif not result.get_value() is Type:
-						return get_error("Unexpected value of type " + str(typeof(result)) + " as argument type (must be a builtin type)")
+					elif not result is Type:
+						return get_error("Unexpected value of type " + Type.new(typeof(result)).get_as_string() + " as argument type (must be a builtin type)")
 					
 					arg["type"] = result
 					skip_advance = true
@@ -340,14 +392,15 @@ func declare_function() -> SimpleScriptError:
 		return get_error(script_end_error)
 	
 	# Construct function object
-	var function: SimpleScriptFunction = SimpleScriptFunction.new(stdout, stderr)
-	function.init_code(func_name, args, get_code_block())
+	var function: SimpleScriptFunction = SimpleScriptFunction.new(stdout, stderr, self)
+	function.init_code(func_name, args, line + 1)
+	functions[func_name] = function
 	
 	return SimpleScriptError.new(null, line, i_in_line)
 
-func create_string() -> Array:
+func create_string():
 	if not (yield(advance(), "completed") if paused else advance()):
-		return [SimpleScriptError.new("", line, i_in_line)]
+		return SimpleScriptError.new("", line, i_in_line)
 	
 	var string: String = ""
 	while true:
@@ -357,10 +410,10 @@ func create_string() -> Array:
 			string += c
 		
 		if not (yield(advance(), "completed") if paused else advance()):
-			return [SimpleScriptError.new("", line, i_in_line)]
+			return SimpleScriptError.new("", line, i_in_line)
 	
 	print("Created string: ", string)
-	return [SimpleScriptError.new(null, line, i_in_line), string]
+	return string
 
 func get_error(message: String) -> SimpleScriptError:
 	return SimpleScriptError.new(message, line, i_in_line)
@@ -381,3 +434,18 @@ class Type:
 	var type: int
 	func _init(_type: int):
 		type = _type
+		return self
+	
+	func get_as_string():
+		match type:
+			TYPE_INT:
+				return "int"
+			TYPE_STRING:
+				return "str"
+			TYPE_ARRAY:
+				return "array"
+			TYPE_DICTIONARY:
+				return "dict"
+			_:
+				push_error("Unhandled type: " + str(type))
+				return "Unhandled type (" + str(type) + ")"
