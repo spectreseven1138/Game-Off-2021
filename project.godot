@@ -45,9 +45,19 @@ _global_script_classes=[ {
 "path": "res://scripts/classes/SimpleScriptParser.gd"
 }, {
 "base": "Reference",
+"class": "SimpleScriptPointer",
+"language": "GDScript",
+"path": "res://scripts/classes/SimpleScriptPointer.gd"
+}, {
+"base": "Reference",
 "class": "SimpleScriptType",
 "language": "GDScript",
 "path": "res://scripts/classes/SimpleScriptType.gd"
+}, {
+"base": "Reference",
+"class": "SimpleScriptValue",
+"language": "GDScript",
+"path": "res://scripts/classes/SimpleScriptValue.gd"
 } ]
 _global_script_class_icons={
 "ExArray": "",
@@ -57,7 +67,9 @@ _global_script_class_icons={
 "SimpleScriptError": "",
 "SimpleScriptFunction": "",
 "SimpleScriptParser": "",
-"SimpleScriptType": ""
+"SimpleScriptPointer": "",
+"SimpleScriptType": "",
+"SimpleScriptValue": ""
 }
 
 [application]

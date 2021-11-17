@@ -1,21 +1,35 @@
 extends Reference
 class_name SimpleScriptType
 
+enum TYPES {NULL, INT, FLOAT, STR, ARRAY, DICT, BOOL, POINTER, SCRIPT, TYPE}
 var type: int
 func _init(_type: int):
 	type = _type
 	return self
 
-func get_as_string():
+static func get_as_string(type: int):
 	match type:
-		TYPE_INT:
+		TYPES.NULL:
+			return "null"
+		TYPES.INT:
 			return "int"
-		TYPE_STRING:
+		TYPES.FLOAT:
+			return "float"
+		TYPES.STR:
 			return "str"
-		TYPE_ARRAY:
+		TYPES.ARRAY:
 			return "array"
-		TYPE_DICTIONARY:
+		TYPES.DICT:
 			return "dict"
+		TYPES.POINTER:
+			return "pointer"
+		TYPES.SCRIPT:
+			return "script"
+		TYPES.TYPE:
+			return "type"
 		_:
 			push_error("Unhandled type: " + str(type))
 			return "Unhandled type (" + str(type) + ")"
+
+func get_class():
+	return "Type"

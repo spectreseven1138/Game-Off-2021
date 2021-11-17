@@ -25,17 +25,7 @@ var stderr: FuncRef
 
 const BUILTIN_PROPERTIES: Array = ["null", "PI", "TAU", "INF", "NAN", "int", "str", "array", "dict"]
 var functions: Dictionary = {}
-var global_properties: Dictionary = {
-	"null": null, 
-	"PI": PI,
-	"TAU": TAU,
-	"INF": INF,
-	"NAN": NAN,
-	"int": SimpleScriptType.new(TYPE_INT),
-	"str": SimpleScriptType.new(TYPE_STRING),
-	"array": SimpleScriptType.new(TYPE_ARRAY),
-	"dict": SimpleScriptType.new(TYPE_DICTIONARY),
-	}
+var global_properties: Dictionary = {}
 
 var parser: SimpleScriptParser = SimpleScriptParser.new(self)
 
@@ -48,6 +38,12 @@ func _init(_source_code: String, _stdout: FuncRef, _stderr: FuncRef, function_na
 	
 	for func_name in SimpleScriptFunction.BUILTIN_FUNCTIONS:
 		functions[func_name] = SimpleScriptFunction.new(stdout, stderr, self).init_builtin(func_name)
+	
+	for type in SimpleScriptType.TYPES.values():
+		global_properties[SimpleScriptType.get_as_string(type)] = SimpleScriptValue.new(SimpleScriptType.new(type))
+	
+	for property in ["null", "PI", "TAU", "INF", "NAN"]:
+		global_properties[property] = SimpleScriptValue.new(get(property))
 
 func get_property(property_name: String):
 	if property_name in global_properties:
@@ -99,8 +95,9 @@ class GVReturnObject:
 	var value
 	enum SOURCE_TYPES {ERROR, VALUE, PROPERTY, FUNCTION}
 	var source_type: int
+	var data: Dictionary = {}
 	
-	func _init(_value, _source_type: int = null):
+	func _init(_value, _source_type: int = null, property_name: String = null):
 		value = _value
 		
 		if _source_type == null:
@@ -111,6 +108,11 @@ class GVReturnObject:
 				assert(false, "Cannot infer source type")
 		else:
 			source_type = _source_type
+			
+			if source_type == SOURCE_TYPES.PROPERTY:
+				assert(property_name != null, "The property type requires the property name")
+				data["property_name"] = property_name
+			
 
 func get_value(must_be_value: bool, properties: Dictionary, kw_endings: Array = []) -> GVReturnObject:
 	var kw: String = ""
@@ -141,13 +143,13 @@ func get_value(must_be_value: bool, properties: Dictionary, kw_endings: Array = 
 				if (kw in properties and properties[kw].constant) or (kw in global_properties and global_properties[kw].constant):
 					return GVReturnObject.new(get_error("Cannot assign value to constant property '" + kw + "'"))
 				
-				var value_to_assign = get_value(true, properties)
-				if value_to_assign is GDScriptFunctionState:
-					value_to_assign = yield(value_to_assign, "completed")
+				var value_to_assign: GVReturnObject = get_value(true, properties)
+				if value_to_assign.value is GDScriptFunctionState:
+					value_to_assign.value = yield(value_to_assign, "completed")
 				
 				# Return if error occurred
-				if value_to_assign is SimpleScriptError:
-					return GVReturnObject.new(value_to_assign)
+				if value_to_assign.value is SimpleScriptError:
+					return value_to_assign
 				
 #				if kw in global_properties:
 #					global_properties[kw].set_value(value_to_assign)
@@ -155,7 +157,9 @@ func get_value(must_be_value: bool, properties: Dictionary, kw_endings: Array = 
 #					properties[kw].set_value(value_to_assign)
 #				else: # Create new value
 #				properties[kw] = SimpleScriptValue.new().assign_value(value_to_assign)
-				properties[kw] = value_to_assign
+				
+				
+				properties[kw] = SimpleScriptValue.new(value_to_assign.value)
 				
 				print("Assigned property '" + kw + "' as ", value_to_assign)
 				kw = ""
@@ -164,8 +168,7 @@ func get_value(must_be_value: bool, properties: Dictionary, kw_endings: Array = 
 				var result = create_string()
 				if result is SimpleScriptError:
 					return GVReturnObject.new(result)
-				if not (yield(advance(), "completed") if paused else advance()):
-					return GVReturnObject.new(get_error(script_ended_error))
+				yield(advance(), "completed") if paused else advance()
 				return GVReturnObject.new(result, GVReturnObject.SOURCE_TYPES.VALUE)
 			" ": # Check for keyword before space
 				
@@ -227,13 +230,12 @@ func get_value(must_be_value: bool, properties: Dictionary, kw_endings: Array = 
 						
 						var returnobject = get_value(true, properties)
 						if returnobject.value is SimpleScriptError:
-							return returnobject.value
+							return returnobject
 						
-						if returnobject.source_type != GVReturnObject.SOURCE_TYPES.VALUE:
+						if returnobject.source_type != GVReturnObject.SOURCE_TYPES.PROPERTY:
 							return GVReturnObject.new(get_error("The '" + kw_pointer + "' keyword must be followed by a property"))
 						
-						return GVReturnObject.new(get_error(null))
-						
+						return GVReturnObject.new(SimpleScriptPointer.new(self, returnobject.data["property_name"]), GVReturnObject.SOURCE_TYPES.VALUE)
 					_:
 						if not (yield(advance(), "completed") if paused else advance()):
 							return GVReturnObject.new(get_error(script_ended_error))
@@ -250,10 +252,9 @@ func get_value(must_be_value: bool, properties: Dictionary, kw_endings: Array = 
 					kw += c
 		
 		if i + 1 < len(source_code) and (source_code[i + 1] in kw_endings or (source_code[i + 1] == "\n" and must_be_value)):
-			if kw in properties:
-				return GVReturnObject.new(properties[kw], GVReturnObject.SOURCE_TYPES.PROPERTY)
-			elif kw in global_properties:
-				return GVReturnObject.new(global_properties[kw], GVReturnObject.SOURCE_TYPES.PROPERTY)
+			var result = parse_kw(kw, properties)
+			if result is GVReturnObject:
+				return result
 			else:
 				return GVReturnObject.new(get_error("Expected expression" if kw.strip_edges().empty() else "Property '" + kw + "' does not exist in this scope"))
 		
@@ -261,19 +262,29 @@ func get_value(must_be_value: bool, properties: Dictionary, kw_endings: Array = 
 			skip_advance = false
 		else:
 			if not (yield(advance(), "completed") if paused else advance()):
-				if kw in properties:
-					return GVReturnObject.new(properties[kw], GVReturnObject.SOURCE_TYPES.PROPERTY)
-				elif kw in global_properties:
-					return GVReturnObject.new(global_properties[kw], GVReturnObject.SOURCE_TYPES.PROPERTY)
+				var result = parse_kw(kw, properties)
+				if result is GVReturnObject:
+					return result
 				else:
 					return GVReturnObject.new(get_error(script_ended_error))
 	
-	if kw in properties:
-		return GVReturnObject.new(properties[kw], GVReturnObject.SOURCE_TYPES.PROPERTY)
-	elif kw in global_properties:
-		return GVReturnObject.new(global_properties[kw], GVReturnObject.SOURCE_TYPES.PROPERTY)
+	var result = parse_kw(kw, properties)
+	if result is GVReturnObject:
+		return result
 	else:
 		return GVReturnObject.new(get_error("Property '" + kw + "' does not exist in this scope"))
+
+func parse_kw(kw: String, properties: Dictionary):
+	if kw.is_valid_integer():
+		return GVReturnObject.new(SimpleScriptValue.new(kw.to_int()), GVReturnObject.SOURCE_TYPES.VALUE)
+	elif kw.is_valid_float():
+		return GVReturnObject.new(SimpleScriptValue.new(kw.to_float()), GVReturnObject.SOURCE_TYPES.VALUE)
+	elif kw in properties:
+		return GVReturnObject.new(properties[kw], GVReturnObject.SOURCE_TYPES.PROPERTY, kw)
+	elif kw in global_properties:
+		return GVReturnObject.new(global_properties[kw], GVReturnObject.SOURCE_TYPES.PROPERTY, kw)
+	else:
+		return null
 
 # Moves the header to the given position index
 func go_to_position(position: int):
@@ -460,7 +471,7 @@ func declare_function() -> SimpleScriptError:
 						return result
 					
 					elif not result.get_value() is SimpleScriptType:
-						return get_error("Unexpected value of type " + SimpleScriptType.new(typeof(result)).get_as_string() + " as argument type (must be a builtin type)")
+						return get_error("Unexpected value of type " + SimpleScriptType.get_as_string(typeof(result)) + " as argument type (must be a builtin type)")
 					
 					arg["type"] = result.get_value().type
 					
@@ -554,3 +565,6 @@ func get_indent_of_line(line: int) -> int:
 	while i + indent < len(source_code) and source_code[i + indent] == "	":
 		indent += 1
 	return indent
+
+func get_class() -> String:
+	return "Script"
