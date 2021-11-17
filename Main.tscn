@@ -1,8 +1,22 @@
-[gd_scene load_steps=3 format=2]
+[gd_scene load_steps=7 format=2]
 
 [ext_resource path="res://Main.gd" type="Script" id=1]
 
-[sub_resource type="Theme" id=1]
+[sub_resource type="InputEventAction" id=1]
+action = "save_script"
+pressed = true
+
+[sub_resource type="ShortCut" id=2]
+shortcut = SubResource( 1 )
+
+[sub_resource type="Theme" id=3]
+
+[sub_resource type="InputEventAction" id=4]
+action = "run_script"
+pressed = true
+
+[sub_resource type="ShortCut" id=5]
+shortcut = SubResource( 4 )
 
 [node name="Node2D" type="Control"]
 anchor_right = 1.0
@@ -19,7 +33,18 @@ __meta__ = {
 "_edit_use_anchors_": false
 }
 
+[node name="TopBar" type="HBoxContainer" parent="VBoxContainer"]
+margin_right = 1024.0
+margin_bottom = 20.0
+
+[node name="SaveButton" type="Button" parent="VBoxContainer/TopBar"]
+margin_right = 53.0
+margin_bottom = 20.0
+shortcut = SubResource( 2 )
+text = "Save *"
+
 [node name="HSplitContainer" type="VSplitContainer" parent="VBoxContainer"]
+margin_top = 24.0
 margin_right = 1024.0
 margin_bottom = 572.0
 size_flags_horizontal = 3
@@ -27,9 +52,10 @@ size_flags_vertical = 3
 
 [node name="TextEdit" type="TextEdit" parent="VBoxContainer/HSplitContainer"]
 margin_right = 1024.0
-margin_bottom = 446.0
+margin_bottom = 422.0
 size_flags_vertical = 3
-theme = SubResource( 1 )
+theme = SubResource( 3 )
+custom_constants/line_spacing = 5
 text = "
 foo = \"FOO\"
 bar = \"BAR\"
@@ -40,7 +66,7 @@ print(foo, bar)
 
 
 func bruh(moment: str):
-	pass
+	print(\"Function execution yesssssss\")
 
 bruh(\"Hello Arguments\")"
 highlight_current_line = true
@@ -50,6 +76,7 @@ draw_tabs = true
 breakpoint_gutter = true
 fold_gutter = true
 highlight_all_occurrences = true
+smooth_scrolling = true
 minimap_draw = true
 caret_blink = true
 __meta__ = {
@@ -57,9 +84,9 @@ __meta__ = {
 }
 
 [node name="PanelContainer" type="PanelContainer" parent="VBoxContainer/HSplitContainer"]
-margin_top = 458.0
+margin_top = 434.0
 margin_right = 1024.0
-margin_bottom = 572.0
+margin_bottom = 548.0
 
 [node name="RichTextLabel" type="RichTextLabel" parent="VBoxContainer/HSplitContainer/PanelContainer"]
 margin_left = 7.0
@@ -78,6 +105,7 @@ margin_bottom = 600.0
 margin_right = 759.0
 margin_bottom = 24.0
 size_flags_horizontal = 3
+shortcut = SubResource( 5 )
 text = "Run code"
 
 [node name="ClearButton" type="Button" parent="VBoxContainer/HBoxContainer"]
@@ -93,5 +121,8 @@ margin_bottom = 24.0
 pressed = true
 text = "Clear console on run"
 
+[connection signal="pressed" from="VBoxContainer/TopBar/SaveButton" to="." method="_on_SaveButton_pressed"]
+[connection signal="draw" from="VBoxContainer/HSplitContainer/TextEdit" to="." method="_on_TextEdit_draw"]
+[connection signal="text_changed" from="VBoxContainer/HSplitContainer/TextEdit" to="." method="_on_TextEdit_text_changed"]
 [connection signal="pressed" from="VBoxContainer/HBoxContainer/RunButton" to="." method="_on_Button_pressed"]
 [connection signal="pressed" from="VBoxContainer/HBoxContainer/ClearButton" to="." method="_on_ClearButton_pressed"]

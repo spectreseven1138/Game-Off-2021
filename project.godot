@@ -45,9 +45,9 @@ _global_script_classes=[ {
 "path": "res://scripts/classes/SimpleScriptParser.gd"
 }, {
 "base": "Reference",
-"class": "SimpleScriptValue",
+"class": "SimpleScriptType",
 "language": "GDScript",
-"path": "res://scripts/classes/SimpleScriptValue.gd"
+"path": "res://scripts/classes/SimpleScriptType.gd"
 } ]
 _global_script_class_icons={
 "ExArray": "",
@@ -57,7 +57,7 @@ _global_script_class_icons={
 "SimpleScriptError": "",
 "SimpleScriptFunction": "",
 "SimpleScriptParser": "",
-"SimpleScriptValue": ""
+"SimpleScriptType": ""
 }
 
 [application]
@@ -73,6 +73,19 @@ Utils="*res://addons/Godot-Utilities/Utils.gd"
 [editor_plugins]
 
 enabled=PoolStringArray( "res://addons/Godot-Utilities/plugin.cfg" )
+
+[input]
+
+save_script={
+"deadzone": 0.5,
+"events": [ Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"alt":false,"shift":false,"control":true,"meta":false,"command":true,"pressed":false,"scancode":83,"unicode":0,"echo":false,"script":null)
+ ]
+}
+run_script={
+"deadzone": 0.5,
+"events": [ Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"alt":false,"shift":false,"control":false,"meta":false,"command":false,"pressed":false,"scancode":16777248,"unicode":0,"echo":false,"script":null)
+ ]
+}
 
 [physics]
 

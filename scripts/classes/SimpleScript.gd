@@ -1,45 +1,53 @@
 class_name SimpleScript
 extends Reference
 
+signal function_returned(value)
+
 const linebreak: String = "\n"
 const string_char: String = '"'
 const kw_function: String = "func"
 const kw_return: String = "return"
 const kw_pass: String = "pass"
+const kw_pointer: String = "pointer"
 const comment_string: String = "//"
 
+const highlight_keywords: Array = [
+	kw_function, kw_return, kw_pass, kw_pointer
+]
+
 var source_code: String
+var source_code_lines: Array
+var function: String = null
+var function_returned: bool = false
+var function_return_value
 var stdout: FuncRef
 var stderr: FuncRef
 
+const BUILTIN_PROPERTIES: Array = ["null", "PI", "TAU", "INF", "NAN", "int", "str", "array", "dict"]
 var functions: Dictionary = {}
 var global_properties: Dictionary = {
-	"null": {"value": null, "constant": true}, 
-	"INF": {"value": INF, "constant": true},
-	"NAN": {"value": NAN, "constant": true},
-	"PI": {"value": PI, "constant": true},
-	"TAU": {"value": TAU, "constant": true},
-	"int": {"value": Type.new(TYPE_INT), "constant": true},
-	"str": {"value": Type.new(TYPE_STRING), "constant": true},
-	"array": {"value": Type.new(TYPE_ARRAY), "constant": true},
-	"dict": {"value": Type.new(TYPE_DICTIONARY), "constant": true}
-#	"int": {"value": SimpleScriptValue.new(self).init_value(Type.new(TYPE_INT)), "constant": true},
-#	"str": {"value": SimpleScriptValue.new(self).init_value(Type.new(TYPE_STRING)), "constant": true},
-#	"array": {"value": SimpleScriptValue.new(self).init_value(Type.new(TYPE_ARRAY)), "constant": true},
-#	"dict": {"value": SimpleScriptValue.new(self).init_value(Type.new(TYPE_DICTIONARY)), "constant": true}
+	"null": null, 
+	"PI": PI,
+	"TAU": TAU,
+	"INF": INF,
+	"NAN": NAN,
+	"int": SimpleScriptType.new(TYPE_INT),
+	"str": SimpleScriptType.new(TYPE_STRING),
+	"array": SimpleScriptType.new(TYPE_ARRAY),
+	"dict": SimpleScriptType.new(TYPE_DICTIONARY),
 	}
 
 var parser: SimpleScriptParser = SimpleScriptParser.new(self)
 
-func _init(_source_code: String, _stdout: FuncRef, _stderr: FuncRef):
+func _init(_source_code: String, _stdout: FuncRef, _stderr: FuncRef, function_name: String = null):
 	source_code = _source_code
+	source_code_lines = source_code.split("\n")
 	stdout = _stdout
 	stderr = _stderr
+	function = function_name
 	
-	functions = {
-		"print": SimpleScriptFunction.new(stdout, stderr, self).init_builtin("print"),
-		"sprint": SimpleScriptFunction.new(stdout, stderr, self).init_builtin("sprint"),
-	}
+	for func_name in SimpleScriptFunction.BUILTIN_FUNCTIONS:
+		functions[func_name] = SimpleScriptFunction.new(stdout, stderr, self).init_builtin(func_name)
 
 func get_property(property_name: String):
 	if property_name in global_properties:
@@ -56,149 +64,227 @@ var indent: int = 0
 var c: String
 
 func run():
+	
+	function_returned = false
+	
 	i = -1
 	if not (yield(advance(), "completed") if paused else advance()):
 		return
 	while true:
 		var properties: Dictionary = {}
-		var result = get_value(false, properties)
-		Utils.append_dictionary(global_properties, properties)
-		if result is SimpleScriptError and not result.is_ok():
-			stderr.call_func(result)
+		var returnobject: GVReturnObject = get_value(false, properties)
+		
+		# get_value() returned an error, so display iy
+		if returnobject.value is SimpleScriptError and not returnobject.value.is_ok():
+			stderr.call_func(returnobject.value)
+		
+		# A value was returned during get_value(), so stop execution
+		if function_return_value != null:
 			return
+		
+		# Add properties created during get_value() to the global_properties list
+		Utils.append_dictionary(global_properties, properties)
 		
 		if not (yield(advance(), "completed") if paused else advance()):
 			break
+	
+	# If this is a function and no value was returned in code, return null
+	if function != null and not function_returned:
+		emit_signal("function_returned", null)
 
-func execute_function(line: int, arguments: Dictionary):
-	var properties: Dictionary = arguments
-	go_to_line(line)
-	print("C: ", c == "\n")
-	var code: String = get_code_block()
-	print("CODE: ", code)
+# Object returned by get_value() containing metadata
+class GVReturnObject:
+	extends Reference
+	
+	var value
+	enum SOURCE_TYPES {ERROR, VALUE, PROPERTY, FUNCTION}
+	var source_type: int
+	
+	func _init(_value, _source_type: int = null):
+		value = _value
+		
+		if _source_type == null:
+			if value is SimpleScriptError:
+				source_type = SOURCE_TYPES.ERROR
+			else:
+				push_error("Cannot infer source type")
+				assert(false, "Cannot infer source type")
+		else:
+			source_type = _source_type
 
-
-func get_value(must_be_value: bool, properties: Dictionary, kw_endings: Array = []):
+func get_value(must_be_value: bool, properties: Dictionary, kw_endings: Array = []) -> GVReturnObject:
 	var kw: String = ""
 	var skip_advance: bool = false
+	var script_ended_error: String = "Script ended unexpectedly"
 	while true:
-		
-		if c in kw_endings:
-			if kw in properties:
-				return properties[kw]["value"]
-			elif kw in global_properties:
-				return global_properties[kw]["value"]
-			else:
-				return SimpleScriptError.new("Property '" + kw + "' does not exist", line, i_in_line)
 		
 		match c:
 			"(": # Call function
-				return call_function(kw)
+				return GVReturnObject.new(call_function(kw, properties), GVReturnObject.SOURCE_TYPES.FUNCTION)
 			"=": # Assign
 				
+				# Can't assign if a value is required
 				if must_be_value:
-					return SimpleScriptError.new("Unexpected assign", line, i_in_line)
+					return GVReturnObject.new(get_error("Unexpected assign"))
 				
 				if not (yield(advance(), "completed") if paused else advance()):
-					return
+					return GVReturnObject.new(get_error(script_ended_error))
 				
-				if c == " ": # Skip if space
-					if not (yield(advance(), "completed") if paused else advance()):
-						return
+				# Skip if space
 				if c == " ":
-					return SimpleScriptError.new("Unexpected space", line, i_in_line)
+					if not (yield(advance(), "completed") if paused else advance()):
+						return GVReturnObject.new(get_error(script_ended_error))
+				if c == " ":
+					return GVReturnObject.new(get_error("Unexpected space"))
 				
 				# Can't assign is property already exists and is a constant
-				if (kw in properties and properties[kw]["constant"]) or (kw in global_properties and global_properties[kw]["constant"]):
-					return get_error("Cannot assign value to constant property '" + kw + "'")
+				if (kw in properties and properties[kw].constant) or (kw in global_properties and global_properties[kw].constant):
+					return GVReturnObject.new(get_error("Cannot assign value to constant property '" + kw + "'"))
 				
 				var value_to_assign = get_value(true, properties)
 				if value_to_assign is GDScriptFunctionState:
 					value_to_assign = yield(value_to_assign, "completed")
-				if value_to_assign is SimpleScriptError:
-					return value_to_assign
 				
-				properties[kw] = {"value": value_to_assign, "constant": false}
+				# Return if error occurred
+				if value_to_assign is SimpleScriptError:
+					return GVReturnObject.new(value_to_assign)
+				
+#				if kw in global_properties:
+#					global_properties[kw].set_value(value_to_assign)
+#				elif kw in properties: # Property already exists, so overwrite
+#					properties[kw].set_value(value_to_assign)
+#				else: # Create new value
+#				properties[kw] = SimpleScriptValue.new().assign_value(value_to_assign)
+				properties[kw] = value_to_assign
+				
 				print("Assigned property '" + kw + "' as ", value_to_assign)
 				kw = ""
 				
-			string_char:
+			string_char: # Initialise string
 				var result = create_string()
 				if result is SimpleScriptError:
-					return result
+					return GVReturnObject.new(result)
 				if not (yield(advance(), "completed") if paused else advance()):
-					return
-				return result
-			" ":
+					return GVReturnObject.new(get_error(script_ended_error))
+				return GVReturnObject.new(result, GVReturnObject.SOURCE_TYPES.VALUE)
+			" ": # Check for keyword before space
 				
 				match kw:
-					kw_function:
+					kw_function: # Declare function
+						
+						# Can't declare if a value is required
 						if must_be_value:
-							return SimpleScriptError.new("Unexpected function declaration", line, i_in_line)
+							return GVReturnObject.new(get_error("Unexpected function declaration"))
 						
 						if not (yield(advance(), "completed") if paused else advance()):
-							return SimpleScriptError.new("scipt ended unexpectedly", line, i_in_line)
+							return GVReturnObject.new(get_error(script_ended_error))
 						
 						if c == " ":
-							return SimpleScriptError.new("Unexpected space", line, i_in_line)
+							return GVReturnObject.new(get_error("Unexpected space"))
 						
-						var result = declare_function()
-						if result is GDScriptFunctionState:
-							yield(result, "completed")
+						# Declare the function
+						var error = declare_function()
+						if error is GDScriptFunctionState:
+							yield(error, "completed")
 						
-						if not result.is_ok():
-							return result
+						# Return error if not OK
+						if not error.is_ok():
+							return GVReturnObject.new(error)
+						
+					kw_return: # Return value
+						
+						# Can't return if not a function
+						if function == null:
+							return GVReturnObject.new(get_error("The '" + kw_return + "' keyword can only be used within functions"))
+						
+						if not (yield(advance(), "completed") if paused else advance()):
+							return GVReturnObject.new(get_error(script_ended_error))
+						if c == " ":
+							return GVReturnObject.new(get_error("Unexpected space"))
+						
+						# No value provided, so return null
+						if c == "\n":
+							function_return_value = null
+						# Get return value
+						else:
+							var returnobject: GVReturnObject = get_value(true, properties)
+							if returnobject.value is GDScriptFunctionState:
+								returnobject.value = yield(returnobject.value, "completed")
+							# If an error occurred, raise the error and return null
+							if returnobject.value is SimpleScriptError:
+								function_return_value = null
+								function_returned = true
+								emit_signal("function_returned", function_return_value)
+								return returnobject
+							function_return_value = returnobject.value
+						
+						function_returned = true
+						emit_signal("function_returned", function_return_value)
+						return GVReturnObject.new(get_error(null))
+					kw_pointer:
+						if not (yield(advance(), "completed") if paused else advance()):
+							return GVReturnObject.new(get_error(script_ended_error))
+						
+						var returnobject = get_value(true, properties)
+						if returnobject.value is SimpleScriptError:
+							return returnobject.value
+						
+						if returnobject.source_type != GVReturnObject.SOURCE_TYPES.VALUE:
+							return GVReturnObject.new(get_error("The '" + kw_pointer + "' keyword must be followed by a property"))
+						
+						return GVReturnObject.new(get_error(null))
+						
 					_:
 						if not (yield(advance(), "completed") if paused else advance()):
-							return
+							return GVReturnObject.new(get_error(script_ended_error))
 						
 						if c == " ":
-							return SimpleScriptError.new("Unexpected space", line, i_in_line)
+							return GVReturnObject.new(get_error("Unexpected space"))
 						else:
 							skip_advance = true
 			_:
+				# If new line, reset keyword
 				if c == linebreak:
 					kw = ""
 				else:
 					kw += c
 		
+		if i + 1 < len(source_code) and (source_code[i + 1] in kw_endings or (source_code[i + 1] == "\n" and must_be_value)):
+			if kw in properties:
+				return GVReturnObject.new(properties[kw], GVReturnObject.SOURCE_TYPES.PROPERTY)
+			elif kw in global_properties:
+				return GVReturnObject.new(global_properties[kw], GVReturnObject.SOURCE_TYPES.PROPERTY)
+			else:
+				return GVReturnObject.new(get_error("Expected expression" if kw.strip_edges().empty() else "Property '" + kw + "' does not exist in this scope"))
+		
 		if skip_advance:
 			skip_advance = false
 		else:
 			if not (yield(advance(), "completed") if paused else advance()):
-				return
+				if kw in properties:
+					return GVReturnObject.new(properties[kw], GVReturnObject.SOURCE_TYPES.PROPERTY)
+				elif kw in global_properties:
+					return GVReturnObject.new(global_properties[kw], GVReturnObject.SOURCE_TYPES.PROPERTY)
+				else:
+					return GVReturnObject.new(get_error(script_ended_error))
 	
 	if kw in properties:
-		return properties[kw]["value"]
+		return GVReturnObject.new(properties[kw], GVReturnObject.SOURCE_TYPES.PROPERTY)
+	elif kw in global_properties:
+		return GVReturnObject.new(global_properties[kw], GVReturnObject.SOURCE_TYPES.PROPERTY)
 	else:
-		return SimpleScriptError.new("Property '" + kw + "' does not exist", line, i_in_line)
+		return GVReturnObject.new(get_error("Property '" + kw + "' does not exist in this scope"))
 
-func go_to_line(target_line: int):
-	i = 0
-	line = 1
-	i_in_line = 0
+# Moves the header to the given position index
+func go_to_position(position: int):
+	i = position
+	c = source_code[i]
+	i_in_line = position - Utils.get_position_of_line(source_code, position)
+	
 	indent = 0
-	while true:
-		c = source_code[i]
-		if c == "\n":
-			line += 1
-		i += 1
-		
-		if i >= len(source_code):
-			push_error("Script ended unexpectedly")
-			return
-		
-		if line == target_line:
-			c = source_code[i]
-			
-			while c == "	":
-				print("ADD INDENT")
-				indent += 1
-				i += 1
-				i_in_line += 1
-				c = source_code[i]
-			
-			break
+	var line_i: int = Utils.get_position_of_line(source_code, Utils.get_line_of_position(source_code, position))
+	while source_code[line_i + indent] == "	":
+		indent += 1
 
 # Advances the current character (c) by 1. Handles indentation, linebreaks, and comments.
 # Returns false if the script ended
@@ -245,23 +331,40 @@ func advance(ignore_linebreaks: bool = false) -> bool:
 			# Set indent to indent of current line
 			var indent_i: int = 1
 			indent = 0
+			
+			if i + indent_i < len(source_code):
+				while source_code[i + indent_i] == "	":
+					indent += 1
+					indent_i += 1
+					
+					if i + indent_i >= len(source_code):
+						break
+			
+		elif source_code[i - 1] == linebreak and ignore_linebreaks:
+			print("WAS LINEBREAK ", c == "	")
+			line += 1
+			i_in_line = 0
+
+			# Set indent to indent of current line
+			var indent_i: int = 0
+			indent = 0
 			while source_code[i + indent_i] == "	":
 				indent += 1
 				indent_i += 1
-				
 				if i + indent_i >= len(source_code):
 					break
+		
 		return true
 	else:
 		return false
 
-func call_function(func_name: String):
+func call_function(func_name: String, properties: Dictionary):
 	
 	if not func_name in functions:
-		return SimpleScriptError.new("The function '" + func_name + "' does not exist", line, i_in_line)
+		return get_error("Function '" + func_name + "' does not exist in this scope")
 	
 	if not (yield(advance(), "completed") if paused else advance()):
-		return SimpleScriptError.new("scipt ended unexpectedly while calling function '" + func_name + "'", line, i_in_line)
+		return get_error("Script ended unexpectedly while calling function '" + func_name + "'")
 	
 	var args: Array = []
 	
@@ -270,19 +373,19 @@ func call_function(func_name: String):
 			")":
 				break
 			_:
-				var value = get_value(true, {}, [",", ")"])
-				if value is SimpleScriptError:
-					return value
-				args.append(value)
+				var returnobject: GVReturnObject = get_value(true, properties, [",", ")"])
+				if returnobject.value is GDScriptFunctionState:
+					returnobject.value = yield(returnobject.value, "completed")
+				if returnobject.value is SimpleScriptError:
+					return returnobject.value
+				args.append(returnobject.value)
 				
 				if c == ")":
 					break
 				
-				print("Got arg ", value)
-		
 		if not (yield(advance(), "completed") if paused else advance()):
 			if c != ")":
-				return SimpleScriptError.new("scipt ended unexpectedly while calling function '" + func_name + "'", line, i_in_line)
+				return get_error("Script ended unexpectedly while calling function '" + func_name + "'")
 			else:
 				break
 	
@@ -356,11 +459,10 @@ func declare_function() -> SimpleScriptError:
 					if result is SimpleScriptError:
 						return result
 					
-					elif not result is Type:
-						return get_error("Unexpected value of type " + Type.new(typeof(result)).get_as_string() + " as argument type (must be a builtin type)")
+					elif not result.get_value() is SimpleScriptType:
+						return get_error("Unexpected value of type " + SimpleScriptType.new(typeof(result)).get_as_string() + " as argument type (must be a builtin type)")
 					
-					arg["type"] = result
-					skip_advance = true
+					arg["type"] = result.get_value().type
 					
 				"=": # Get default value
 					pass
@@ -393,14 +495,16 @@ func declare_function() -> SimpleScriptError:
 	
 	# Construct function object
 	var function: SimpleScriptFunction = SimpleScriptFunction.new(stdout, stderr, self)
-	function.init_code(func_name, args, line + 1)
+	function.init_code(func_name, args, line - 1)
 	functions[func_name] = function
 	
-	return SimpleScriptError.new(null, line, i_in_line)
+	go_to_position(i + len(get_code_block()))
+	
+	return get_error(null)
 
 func create_string():
 	if not (yield(advance(), "completed") if paused else advance()):
-		return SimpleScriptError.new("", line, i_in_line)
+		return get_error("Script ended unexpectedly while creating string")
 	
 	var string: String = ""
 	while true:
@@ -410,42 +514,43 @@ func create_string():
 			string += c
 		
 		if not (yield(advance(), "completed") if paused else advance()):
-			return SimpleScriptError.new("", line, i_in_line)
+			return get_error("Script ended unexpectedly while creating string")
 	
 	print("Created string: ", string)
 	return string
 
 func get_error(message: String) -> SimpleScriptError:
-	return SimpleScriptError.new(message, line, i_in_line)
+	return SimpleScriptError.new(message, line, i, i_in_line)
 
-func get_code_block():
+func get_code_block(from_line: int = line):
+	var ret: String = ""
 	
-	var starting_indent: int = indent
-	var ret: String = c
+	var line: int = from_line
+	var i: int = Utils.get_position_of_line(source_code, line)
+	var base_indent: int = get_indent_of_line(line)
+	while i < len(source_code):
+		if source_code[i] == "\n":
+			line += 1
+			if get_indent_of_line(line) < base_indent and not source_code_lines[line].strip_edges().empty():
+				break
+		ret += source_code[i]
+		i += 1
 	
-	while indent >= starting_indent:
-		print(indent)
-		if not advance(true):
-			return ret
-		
-		ret += c
+	# Flatten indentation
+	var lines: Array = ret.split("\n")
+	ret = ""
+	for j in len(lines):
+		var line_str: String = lines[j]
+		line_str.erase(0, base_indent)
+		ret += line_str
+		if j + 1 != len(lines):
+			ret += "\n"
+	
+	return ret
 
-class Type:
-	var type: int
-	func _init(_type: int):
-		type = _type
-		return self
-	
-	func get_as_string():
-		match type:
-			TYPE_INT:
-				return "int"
-			TYPE_STRING:
-				return "str"
-			TYPE_ARRAY:
-				return "array"
-			TYPE_DICTIONARY:
-				return "dict"
-			_:
-				push_error("Unhandled type: " + str(type))
-				return "Unhandled type (" + str(type) + ")"
+func get_indent_of_line(line: int) -> int:
+	var i: int = Utils.get_position_of_line(source_code, line)
+	var indent: int = 0
+	while i + indent < len(source_code) and source_code[i + indent] == "	":
+		indent += 1
+	return indent
