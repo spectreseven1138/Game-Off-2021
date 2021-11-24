@@ -1,6 +1,7 @@
 extends Reference
 class_name SimpleScriptPointer
 
+var value = self
 var simplescript #: SimpleScript
 var property_name: String
 

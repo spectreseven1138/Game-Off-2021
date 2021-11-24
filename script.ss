@@ -1,2 +1,0 @@
-
-print(typeof(pointer foo))

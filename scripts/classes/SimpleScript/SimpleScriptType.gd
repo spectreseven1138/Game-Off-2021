@@ -21,6 +21,8 @@ static func get_as_string(type: int):
 			return "array"
 		TYPES.DICT:
 			return "dict"
+		TYPES.BOOL:
+			return "bool"
 		TYPES.POINTER:
 			return "pointer"
 		TYPES.SCRIPT:

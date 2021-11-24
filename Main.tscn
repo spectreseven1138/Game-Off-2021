@@ -43,14 +43,33 @@ margin_bottom = 20.0
 shortcut = SubResource( 2 )
 text = "Save *"
 
-[node name="HSplitContainer" type="VSplitContainer" parent="VBoxContainer"]
+[node name="VSplitContainer" type="VSplitContainer" parent="VBoxContainer"]
 margin_top = 24.0
 margin_right = 1024.0
 margin_bottom = 572.0
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
-[node name="TextEdit" type="TextEdit" parent="VBoxContainer/HSplitContainer"]
+[node name="HSplitContainer" type="HSplitContainer" parent="VBoxContainer/VSplitContainer"]
+margin_right = 1024.0
+margin_bottom = 422.0
+size_flags_horizontal = 3
+size_flags_vertical = 3
+split_offset = 91
+
+[node name="PanelContainer" type="PanelContainer" parent="VBoxContainer/VSplitContainer/HSplitContainer"]
+margin_right = 105.0
+margin_bottom = 422.0
+
+[node name="ItemList" type="ItemList" parent="VBoxContainer/VSplitContainer/HSplitContainer/PanelContainer"]
+margin_left = 7.0
+margin_top = 7.0
+margin_right = 98.0
+margin_bottom = 415.0
+items = [ "Item 0", null, false, "Item 1", null, false, "Item 2", null, false, "Item 3", null, false, "Item 4", null, false, "Item 5", null, false ]
+
+[node name="TextEdit" type="TextEdit" parent="VBoxContainer/VSplitContainer/HSplitContainer"]
+margin_left = 117.0
 margin_right = 1024.0
 margin_bottom = 422.0
 size_flags_vertical = 3
@@ -83,12 +102,12 @@ __meta__ = {
 "_edit_use_anchors_": false
 }
 
-[node name="PanelContainer" type="PanelContainer" parent="VBoxContainer/HSplitContainer"]
+[node name="PanelContainer" type="PanelContainer" parent="VBoxContainer/VSplitContainer"]
 margin_top = 434.0
 margin_right = 1024.0
 margin_bottom = 548.0
 
-[node name="RichTextLabel" type="RichTextLabel" parent="VBoxContainer/HSplitContainer/PanelContainer"]
+[node name="RichTextLabel" type="RichTextLabel" parent="VBoxContainer/VSplitContainer/PanelContainer"]
 margin_left = 7.0
 margin_top = 7.0
 margin_right = 1017.0
@@ -102,27 +121,37 @@ margin_right = 1024.0
 margin_bottom = 600.0
 
 [node name="RunButton" type="Button" parent="VBoxContainer/HBoxContainer"]
-margin_right = 759.0
+margin_right = 604.0
 margin_bottom = 24.0
 size_flags_horizontal = 3
 shortcut = SubResource( 5 )
 text = "Run code"
 
 [node name="ClearButton" type="Button" parent="VBoxContainer/HBoxContainer"]
-margin_left = 763.0
-margin_right = 861.0
+margin_left = 608.0
+margin_right = 706.0
 margin_bottom = 24.0
 text = "Clear console"
 
 [node name="ClearOnRunCheckBox" type="CheckBox" parent="VBoxContainer/HBoxContainer"]
-margin_left = 865.0
-margin_right = 1024.0
+margin_left = 710.0
+margin_right = 869.0
 margin_bottom = 24.0
 pressed = true
 text = "Clear console on run"
 
+[node name="HaltOnErrorCheckBox" type="CheckBox" parent="VBoxContainer/HBoxContainer"]
+margin_left = 873.0
+margin_right = 1024.0
+margin_bottom = 24.0
+pressed = true
+text = "Halt editor on error"
+
 [connection signal="pressed" from="VBoxContainer/TopBar/SaveButton" to="." method="_on_SaveButton_pressed"]
-[connection signal="draw" from="VBoxContainer/HSplitContainer/TextEdit" to="." method="_on_TextEdit_draw"]
-[connection signal="text_changed" from="VBoxContainer/HSplitContainer/TextEdit" to="." method="_on_TextEdit_text_changed"]
+[connection signal="item_selected" from="VBoxContainer/VSplitContainer/HSplitContainer/PanelContainer/ItemList" to="." method="_on_ItemList_item_selected"]
+[connection signal="draw" from="VBoxContainer/VSplitContainer/HSplitContainer/TextEdit" to="." method="_on_TextEdit_draw"]
+[connection signal="gui_input" from="VBoxContainer/VSplitContainer/HSplitContainer/TextEdit" to="." method="_on_TextEdit_gui_input"]
+[connection signal="text_changed" from="VBoxContainer/VSplitContainer/HSplitContainer/TextEdit" to="." method="_on_TextEdit_text_changed"]
 [connection signal="pressed" from="VBoxContainer/HBoxContainer/RunButton" to="." method="_on_Button_pressed"]
 [connection signal="pressed" from="VBoxContainer/HBoxContainer/ClearButton" to="." method="_on_ClearButton_pressed"]
+[connection signal="toggled" from="VBoxContainer/HBoxContainer/HaltOnErrorCheckBox" to="." method="_on_HaltOnErrorCheckBox_toggled"]

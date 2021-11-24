@@ -27,37 +27,37 @@ _global_script_classes=[ {
 "base": "Reference",
 "class": "SimpleScript",
 "language": "GDScript",
-"path": "res://scripts/classes/SimpleScript.gd"
+"path": "res://scripts/classes/SimpleScript/SimpleScript.gd"
 }, {
 "base": "Reference",
 "class": "SimpleScriptError",
 "language": "GDScript",
-"path": "res://scripts/classes/SimpleScriptError.gd"
+"path": "res://scripts/classes/SimpleScript/SimpleScriptError.gd"
 }, {
 "base": "Reference",
 "class": "SimpleScriptFunction",
 "language": "GDScript",
-"path": "res://scripts/classes/SimpleScriptFunction.gd"
+"path": "res://scripts/classes/SimpleScript/SimpleScriptFunction.gd"
 }, {
 "base": "Reference",
 "class": "SimpleScriptParser",
 "language": "GDScript",
-"path": "res://scripts/classes/SimpleScriptParser.gd"
+"path": "res://scripts/classes/SimpleScript/SimpleScriptParser.gd"
 }, {
 "base": "Reference",
 "class": "SimpleScriptPointer",
 "language": "GDScript",
-"path": "res://scripts/classes/SimpleScriptPointer.gd"
+"path": "res://scripts/classes/SimpleScript/SimpleScriptPointer.gd"
 }, {
 "base": "Reference",
 "class": "SimpleScriptType",
 "language": "GDScript",
-"path": "res://scripts/classes/SimpleScriptType.gd"
+"path": "res://scripts/classes/SimpleScript/SimpleScriptType.gd"
 }, {
 "base": "Reference",
 "class": "SimpleScriptValue",
 "language": "GDScript",
-"path": "res://scripts/classes/SimpleScriptValue.gd"
+"path": "res://scripts/classes/SimpleScript/SimpleScriptValue.gd"
 } ]
 _global_script_class_icons={
 "ExArray": "",
@@ -81,6 +81,7 @@ config/icon="res://icon.png"
 [autoload]
 
 Utils="*res://addons/Godot-Utilities/Utils.gd"
+SSEngine="*res://scripts/classes/Engine.gd"
 
 [editor_plugins]
 
@@ -96,6 +97,11 @@ save_script={
 run_script={
 "deadzone": 0.5,
 "events": [ Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"alt":false,"shift":false,"control":false,"meta":false,"command":false,"pressed":false,"scancode":16777248,"unicode":0,"echo":false,"script":null)
+ ]
+}
+duplicate={
+"deadzone": 0.5,
+"events": [ Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"alt":false,"shift":false,"control":true,"meta":false,"command":true,"pressed":false,"scancode":68,"unicode":0,"echo":false,"script":null)
  ]
 }
 
