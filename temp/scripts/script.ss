@@ -6,3 +6,8 @@ for c in bruh(["a", "b", "c"]):
 	sprint(c, @last_c)
 
 print("END")
+
+
+
+
+

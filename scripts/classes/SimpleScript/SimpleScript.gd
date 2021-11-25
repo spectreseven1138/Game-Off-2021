@@ -372,7 +372,7 @@ func get_value(must_be_value: bool, properties: Dictionary, kw_endings: Array = 
 				if c in kw_endings:
 					return ret
 				
-			" ", "\n": # Check for keyword before space
+			" ": # Check for keyword before space
 				var returnobject = check_kw(kw, properties, must_be_value, kw_endings)
 				if returnobject != null:
 					if returnobject is GDScriptFunctionState:
@@ -406,7 +406,8 @@ func get_value(must_be_value: bool, properties: Dictionary, kw_endings: Array = 
 					if must_be_value:
 						return GVReturnObject.new(get_error("Expected expression"))
 				else:
-					return GVReturnObject.new(get_error("Property '" + kw + "' does not exist in this scope"))
+					return check_kw(kw, properties, must_be_value, kw_endings)
+#					return GVReturnObject.new(get_error("Property '" + kw + "' does not exist in this scope"))
 		
 		if skip_advance:
 			skip_advance = false
@@ -424,7 +425,7 @@ func get_value(must_be_value: bool, properties: Dictionary, kw_endings: Array = 
 	
 	return ret if ret != null else GVReturnObject.new(get_error(null))
 
-func check_kw(kw: String, properties: Dictionary, must_be_value: bool, kw_endings: Array):
+func check_kw(kw: String, properties: Dictionary, must_be_value: bool, kw_endings: Array) -> GVReturnObject:
 	match kw:
 		kw_extends: # Inherit other script
 			
@@ -562,6 +563,7 @@ func check_kw(kw: String, properties: Dictionary, must_be_value: bool, kw_ending
 				return GVReturnObject.new(get_error("Unexpected space"))
 #			else:
 #				skip_advance = true
+	return GVReturnObject.new(get_error(null))
 
 func parse_kw(kw: String, properties: Dictionary):
 	

@@ -15,8 +15,7 @@ func _init(_msg: String, _line: int, _position: int, _position_in_line: int, _si
 	position_in_line = _position_in_line
 	simplescript = _simplescript
 	
-	if not is_ok() and SSEngine.halt_editor_on_error:
-		pass # Trigger breakpoint
+	assert(is_ok() or not SSEngine.halt_editor_on_error)
 
 func get_message() -> String:
 	var ret: String = "Error occurred on line " + str(line + 1)
