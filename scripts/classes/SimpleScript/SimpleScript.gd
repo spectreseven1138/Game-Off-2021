@@ -121,13 +121,15 @@ class GVReturnObject:
 	extends Reference
 	
 	var value setget set_value
-	enum SOURCE_TYPES {ERROR, VALUE, PROPERTY, FUNCTION}
+	enum SOURCE_TYPES {ERROR, VALUE, PROPERTY, FUNCTION, NONE}
 	var source_type: int
 	var data: Dictionary = {}
 	
 	func _init(_value):
 		value = _value
-		if value is SimpleScriptError:
+		if value == null:
+			source_type = SOURCE_TYPES.NONE
+		elif value is SimpleScriptError:
 			source_type = SOURCE_TYPES.ERROR
 		else:
 			source_type = SOURCE_TYPES.VALUE
@@ -144,6 +146,12 @@ class GVReturnObject:
 	
 	func set_value(_value):
 		value = _value
+	
+	func is_error():
+		return value is SimpleScriptError and not value.is_ok()
+
+	func no_action():
+		return value == null
 
 func get_value(must_be_value: bool, properties: Dictionary, kw_endings: Array = []) -> GVReturnObject:
 	var kw: String = ""
@@ -374,9 +382,9 @@ func get_value(must_be_value: bool, properties: Dictionary, kw_endings: Array = 
 				
 			" ": # Check for keyword before space
 				var returnobject = check_kw(kw, properties, must_be_value, kw_endings)
-				if returnobject != null:
-					if returnobject is GDScriptFunctionState:
-						returnobject = yield(returnobject, "completed")
+				if returnobject is GDScriptFunctionState:
+					returnobject = yield(returnobject, "completed")
+				if not returnobject.value is SimpleScriptError:
 					return returnobject
 				skip_advance = true
 			_:
@@ -406,8 +414,13 @@ func get_value(must_be_value: bool, properties: Dictionary, kw_endings: Array = 
 					if must_be_value:
 						return GVReturnObject.new(get_error("Expected expression"))
 				else:
-					return check_kw(kw, properties, must_be_value, kw_endings)
-#					return GVReturnObject.new(get_error("Property '" + kw + "' does not exist in this scope"))
+					var returnobject = check_kw(kw, properties, must_be_value, kw_endings)
+					if returnobject is GDScriptFunctionState:
+						returnobject = yield(returnobject, "completed")
+					if returnobject.no_action():
+						return GVReturnObject.new(get_error("Property '" + kw + "' does not exist in this scope"))
+					else:
+						return returnobject
 		
 		if skip_advance:
 			skip_advance = false
@@ -438,10 +451,14 @@ func check_kw(kw: String, properties: Dictionary, must_be_value: bool, kw_ending
 			if extends_script != null:
 				return GVReturnObject.new(get_error("This script already extends another script"))
 			
+			while c == " ":
+				if not (yield(advance(), "completed") if paused else advance()):
+					return GVReturnObject.new(get_error(script_ended_error))
+			
 			var returnobject = get_value(true, properties, kw_endings)
 			if returnobject is GDScriptFunctionState:
 				returnobject = yield(returnobject, "completed")
-			if returnobject.value is SimpleScriptError:
+			if returnobject.is_error():
 				return returnobject
 			
 			var type: int = SimpleScriptValue.get_type(returnobject.value.value)
@@ -563,7 +580,7 @@ func check_kw(kw: String, properties: Dictionary, must_be_value: bool, kw_ending
 				return GVReturnObject.new(get_error("Unexpected space"))
 #			else:
 #				skip_advance = true
-	return GVReturnObject.new(get_error(null))
+	return GVReturnObject.new(null)
 
 func parse_kw(kw: String, properties: Dictionary):
 	
@@ -978,37 +995,61 @@ func while_loop(properties: Dictionary) -> SimpleScriptError:
 
 func for_loop(properties: Dictionary, alt: bool) -> SimpleScriptError:
 	
-	var iter_variable: String = ""
+	var variables: Array = []
+	
+	var current_variable: String = ""
+	var ended: bool = false
 	while true:
 		
-		if c == " ":
+		if c == ",": 
+			if current_variable.strip_edges().empty():
+				return get_error("Expected variable name or '_'")
+			else:
+				variables.append(current_variable)
+				current_variable = ""
+				
+				if current_variable in properties or current_variable in global_properties:
+					return get_error("Property '" + current_variable + "' has already been defined")
+				
+				if not (yield(advance(), "completed") if paused else advance()):
+					return get_error(script_ended_error)
+				
+				if c == " " and not (yield(advance(), "completed") if paused else advance()):
+					return get_error(script_ended_error)
+				
+				if c == " ":
+					return get_error("Unexpected space")
+				
+		elif is_valid_property_name(current_variable + c):
+			current_variable += c
+			
 			if not (yield(advance(), "completed") if paused else advance()):
 				return get_error(script_ended_error)
-			break
-		
-		iter_variable += c
-		
-		if not (yield(advance(), "completed") if paused else advance()):
-			return get_error(script_ended_error)
-	
-	if iter_variable in properties or iter_variable in global_properties:
-		return get_error("Property '" + iter_variable + "' has already been defined")
-	
-	var kw: String = ""
-	while true:
-		
-		if c == " ":
-			if not (yield(advance(), "completed") if paused else advance()):
-				return get_error(script_ended_error)
-			break
-		
-		kw += c
-		
-		if not (yield(advance(), "completed") if paused else advance()):
-			return get_error(script_ended_error)
-	
-	if kw != kw_for_in:
-		return get_error("Expected '" + kw_for_in + "'")
+			
+			if current_variable == kw_for_in and ended:
+				if not (yield(advance(), "completed") if paused else advance()):
+					return get_error(script_ended_error)
+				break
+		elif c == " ":
+			if ended:
+				return get_error("Unexpected space")
+			else:
+				ended = true
+				if current_variable.strip_edges().empty():
+					return get_error("Expected variable name or '_'")
+				variables.append(current_variable)
+				current_variable = ""
+				
+				if current_variable in properties or current_variable in global_properties:
+					return get_error("Property '" + current_variable + "' has already been defined")
+				
+				if not (yield(advance(), "completed") if paused else advance()):
+					return get_error(script_ended_error)
+				
+		elif c == "\n":
+			return get_error("Unexpected linebreak")
+		else:
+			return get_error("Invalid character '" + c + "'")
 	
 	var iterable = get_value(true, properties, [":"])
 	if iterable is GDScriptFunctionState:
@@ -1033,10 +1074,21 @@ func for_loop(properties: Dictionary, alt: bool) -> SimpleScriptError:
 	var initial_i: int = i
 	var block_indent: int = indent
 	while true:
-		
-		properties[iter_variable] = SimpleScriptValue.new(iterable.iterate())
-		var last: bool = iterable.is_last_iteration()
-		properties["@last_" + iter_variable] = SimpleScriptValue.new(last)
+		var last: bool
+		for i in len(variables):
+			
+			match i:
+				0: 
+					if variables[0] == "_":
+						iterable.iterate()
+					else:
+						properties[variables[0]] = SimpleScriptValue.new(iterable.iterate())
+					last = iterable.is_last_iteration()
+				1:
+					if variables[1] != "_":
+						properties[variables[1]] = SimpleScriptValue.new(last)
+				3:
+					return get_error("Excess variables")
 		
 		while indent >= block_indent:
 			
@@ -1045,7 +1097,7 @@ func for_loop(properties: Dictionary, alt: bool) -> SimpleScriptError:
 				returnobject = yield(returnobject, "completed")
 			
 			# If get_value() returned an error, display it
-			if returnobject.value is SimpleScriptError and not returnobject.value.is_ok():
+			if returnobject.is_error():
 				return returnobject.value
 			
 			if i > len(source_code):
@@ -1053,8 +1105,11 @@ func for_loop(properties: Dictionary, alt: bool) -> SimpleScriptError:
 		
 		if last:
 			iterable.end_iteration()
-			properties.erase(iter_variable)
-			properties.erase("@last_" + iter_variable)
+			
+			for property in variables:
+				if property != "_":
+					properties.erase(property)
+			
 			break
 		
 		go_to_position(initial_i)
@@ -1197,3 +1252,6 @@ func get_indent_of_line(line: int) -> int:
 
 func get_class() -> String:
 	return "Script"
+
+func is_valid_property_name(name: String):
+	return name.is_valid_identifier()

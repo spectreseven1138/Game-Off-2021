@@ -1,9 +1,11 @@
-extends "script2.ss"
+//extends "script2.ss"
 
 print("START")
 
-for c in bruh(["a", "b", "c"]):
-	sprint(c, @last_c)
+foo = 12
+
+for c, last in bruh(["a", "b", "c"]):
+	sprint(c, last, o)
 
 print("END")
 
